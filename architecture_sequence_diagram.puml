@@ -1,0 +1,74 @@
+@startuml Clean Architecture - Sequence Diagram (Create Pessoa)
+
+!theme aws-orange
+skinparam sequenceMessageAlign center
+
+actor User
+participant "PessoasPage" as UI
+participant "PessoaStore" as Store
+participant "PessoaRepository" as Repo
+participant "PessoaDao" as DAO
+participant "Database" as DB
+participant "Result<T>" as Result
+
+== User Creates New Pessoa ==
+
+User -> UI: Fill form and tap "Salvar"
+UI -> UI: Validate form
+UI -> Store: createPessoa(pessoa)
+
+activate Store
+Store -> Store: _setSaving(true)
+Store -> Store: _clearError()
+
+Store -> Repo: create(pessoa)
+activate Repo
+
+Repo -> Repo: pessoa.validate()
+note right: Business validation in domain
+
+alt Validation Success
+    Repo -> Repo: dto = PessoaDto.fromDomain(pessoa)
+    Repo -> DAO: create(dto)
+    
+    activate DAO
+    DAO -> DAO: dto.toMap()
+    DAO -> DB: insert(table, map)
+    DB --> DAO: id: int
+    DAO --> Repo: id: int
+    deactivate DAO
+    
+    Repo -> Result: Result.success(id)
+    Result --> Store: Result<int>
+    
+else Validation Error
+    Repo -> Result: Result.failure(message, ValidationException)
+    Result --> Store: Result<int>
+end
+
+deactivate Repo
+
+Store -> Store: result.when(success/failure)
+
+alt Success Case
+    Store -> Store: _setSaving(false)
+    Store -> Store: loadPessoas()
+    Store -> Store: notifyListeners()
+    Store --> UI: Success
+    UI -> UI: Show success SnackBar
+    UI -> UI: Clear form
+    
+else Failure Case  
+    Store -> Store: _setError(message)
+    Store -> Store: _setSaving(false)
+    Store -> Store: notifyListeners()
+    Store --> UI: Failure
+    UI -> UI: Show error SnackBar
+end
+
+deactivate Store
+
+UI -> UI: Update UI (loading/error states)
+UI --> User: Visual feedback
+
+@enduml

@@ -1,0 +1,111 @@
+@startuml Clean Architecture - Component Diagram
+
+!theme aws-orange
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+
+package "Presentation Layer" {
+  component [PessoasPage] as UI
+  component [PessoaStore] as Store
+  note right of Store : ChangeNotifier\nReactive State
+}
+
+package "Domain Layer" {
+  component [Pessoa] as Entity
+  component [PessoaRepository] as RepoInterface
+  note right of Entity : Business Rules\nValidations
+  note right of RepoInterface : Contracts\nInterfaces Only
+}
+
+package "Data Layer" {
+  component [PessoaRepositoryImpl] as RepoImpl
+  component [PessoaDao] as DAO
+  component [PessoaDto] as DTO
+  component [DatabaseProvider] as DBProvider
+  component [DatabaseFactory] as DBFactory
+  
+  note right of RepoImpl : Repository Pattern\nError Mapping
+  note right of DAO : Raw SQL\nCRUD Operations
+  note right of DTO : Data Transfer\nMapping Layer
+}
+
+package "Core Layer" {
+  component [Result<T>] as ResultType
+  component [ServiceLocator] as DI
+  component [DatabaseConstants] as Constants
+  component [DatabaseExceptions] as Exceptions
+  
+  note right of ResultType : Error Handling\nType Safety
+  note right of DI : Dependency\nInjection
+}
+
+package "External" {
+  database "SQLite" as DB
+  component [sqflite] as Mobile
+  component [sqflite_ffi] as Desktop
+  component [sqflite_ffi_web] as Web
+}
+
+' Dependencies (arrows point to dependencies)
+UI --> Store : observes
+Store --> RepoInterface : uses
+RepoImpl .up.|> RepoInterface : implements
+RepoImpl --> DAO : uses
+RepoImpl --> Entity : converts to
+RepoImpl --> DTO : converts from
+RepoImpl --> ResultType : wraps in
+
+DAO --> DTO : returns
+DAO --> Constants : uses
+DAO --> Exceptions : throws
+DAO --> DB : queries
+
+Store --> Entity : manages
+Store --> ResultType : handles
+
+DBProvider --> DBFactory : uses
+DBFactory --> Mobile : creates (mobile)
+DBFactory --> Desktop : creates (desktop)  
+DBFactory --> Web : creates (web)
+
+Mobile --> DB : connects
+Desktop --> DB : connects
+Web --> DB : connects (WASM)
+
+DI --> Store : injects
+DI --> RepoImpl : injects
+DI --> DAO : injects
+DI --> DBProvider : injects
+
+' Layer boundaries
+frame "Clean Architecture Layers" {
+  
+  together {
+    [Presentation Layer]
+    [Domain Layer]
+    [Data Layer]
+    [Core Layer]
+  }
+}
+
+' Dependency Rule (inward only)
+note as DependencyRule
+**Dependency Rule**
+Dependencies point **inward only**:
+• Presentation → Domain
+• Data → Domain  
+• All → Core
+• Never: Domain → Data/Presentation
+end note
+
+' Architecture Benefits
+note as Benefits
+**Architecture Benefits**
+• **Testable**: Easy mocking with interfaces
+• **Flexible**: Easy to swap implementations  
+• **Maintainable**: Separated concerns
+• **Scalable**: Clear layer boundaries
+• **Platform-agnostic**: Factory pattern
+end note
+
+@enduml

@@ -1,0 +1,200 @@
+@startuml Clean Architecture - Class Diagram
+
+!theme aws-orange
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageStyle rectangle
+
+package "Core Layer" as CorePkg {
+  class DatabaseConstants {
+    +{static} dbName: String
+    +{static} tableNome: String
+    +{static} columnId: String
+    +{static} columnNome: String
+    +{static} columnIdade: String
+  }
+
+  abstract class DatabaseException {
+    +message: String
+    +cause: Exception?
+  }
+
+  class ValidationException extends DatabaseException
+  class DatabaseOperationException extends DatabaseException
+  class DatabaseInitException extends DatabaseException
+
+  abstract class Result<T> {
+    +when(success: Function, failure: Function): void
+    +{static} success(data: T): Success<T>
+    +{static} failure(message: String, exception: Exception): Failure<T>
+  }
+
+  class Success<T> extends Result
+  class Failure<T> extends Result
+
+  class ServiceLocator {
+    -{static} _getIt: GetIt
+    +{static} setup(): Future<void>
+    +{static} get<T>(): T
+    +{static} isRegistered<T>(): bool
+    +{static} reset(): Future<void>
+    +{static} dispose(): Future<void>
+  }
+}
+
+package "Domain Layer" as DomainPkg {
+  class Pessoa {
+    +id: int?
+    +nome: String
+    +idade: int
+    +copyWith(): Pessoa
+    +validate(): void
+    +toString(): String
+    +operator ==(other): bool
+    +hashCode: int
+  }
+
+  interface PessoaRepository {
+    +create(pessoa: Pessoa): Future<Result<int>>
+    +getAll(): Future<Result<List<Pessoa>>>
+    +getById(id: int): Future<Result<Pessoa?>>
+    +update(pessoa: Pessoa): Future<Result<int>>
+    +delete(id: int): Future<Result<int>>
+    +exists(id: int): Future<Result<bool>>
+  }
+}
+
+package "Data Layer" as DataPkg {
+  class PessoaDto {
+    +id: int?
+    +nome: String
+    +idade: int
+    +{static} fromDomain(pessoa: Pessoa): PessoaDto
+    +{static} fromMap(map: Map): PessoaDto
+    +toDomain(): Pessoa
+    +toMap(): Map<String, dynamic>
+    +toString(): String
+  }
+
+  class PessoaDao {
+    -_database: Database
+    +create(dto: PessoaDto): Future<int>
+    +findAll(): Future<List<PessoaDto>>
+    +findById(id: int): Future<PessoaDto?>
+    +update(dto: PessoaDto): Future<int>
+    +deleteById(id: int): Future<int>
+    +existsById(id: int): Future<bool>
+    +count(): Future<int>
+  }
+
+  class PessoaRepositoryImpl implements PessoaRepository {
+    -_dao: PessoaDao
+    +create(pessoa: Pessoa): Future<Result<int>>
+    +getAll(): Future<Result<List<Pessoa>>>
+    +getById(id: int): Future<Result<Pessoa?>>
+    +update(pessoa: Pessoa): Future<Result<int>>
+    +delete(id: int): Future<Result<int>>
+    +exists(id: int): Future<Result<bool>>
+  }
+
+  abstract class AppDatabaseFactory {
+    +createDatabase(): Future<Database>
+    +getDatabasePath(dbName: String): Future<String?>
+  }
+
+  class MobileDatabaseFactory implements AppDatabaseFactory
+  class DesktopDatabaseFactory implements AppDatabaseFactory  
+  class WebDatabaseFactory implements AppDatabaseFactory
+
+  class DatabaseFactoryProvider {
+    +{static} create(): AppDatabaseFactory
+  }
+
+  class DatabaseProvider {
+    -_factory: AppDatabaseFactory
+    -_database: Database?
+    +getDatabase(): Future<Database>
+    -_initDatabase(): Future<Database>
+    -_onCreate(db: Database, version: int): Future<void>
+    -_onUpgrade(db: Database, oldV: int, newV: int): Future<void>
+    +close(): Future<void>
+    +isOpen: bool
+  }
+}
+
+package "Presentation Layer" as PresentationPkg {
+  class PessoaStore extends ChangeNotifier {
+    -_repository: PessoaRepository
+    -_pessoas: List<Pessoa>
+    -_isLoading: bool
+    -_error: String?
+    -_isSaving: bool
+    +pessoas: List<Pessoa>
+    +isLoading: bool
+    +isSaving: bool
+    +error: String?
+    +hasError: bool
+    +isEmpty: bool
+    +loadPessoas(): Future<void>
+    +createPessoa(pessoa: Pessoa): Future<Result<int>>
+    +updatePessoa(pessoa: Pessoa): Future<Result<int>>
+    +deletePessoa(id: int): Future<Result<int>>
+    +getPessoaById(id: int): Future<Result<Pessoa?>>
+    +pessoaExists(id: int): Future<Result<bool>>
+    +clearError(): void
+  }
+
+  class PessoasPage extends StatefulWidget {
+    +createState(): State<PessoasPage>
+  }
+
+  class _PessoasPageState extends State<PessoasPage> {
+    -_formKey: GlobalKey<FormState>
+    -_nomeController: TextEditingController
+    -_idadeController: TextEditingController
+    -_store: PessoaStore
+    -_editingId: int?
+    +initState(): void
+    +dispose(): void
+    -_onStoreChanged(): void
+    -_clearForm(): void
+    +build(context: BuildContext): Widget
+  }
+
+  class PessoasApp extends StatelessWidget {
+    +build(context: BuildContext): Widget
+  }
+}
+
+' Relationships
+PessoaRepositoryImpl --> PessoaDao : uses
+PessoaRepositoryImpl --> PessoaDto : converts
+PessoaRepositoryImpl --> Pessoa : returns
+PessoaRepositoryImpl --> Result : wraps
+
+PessoaDao --> PessoaDto : returns
+PessoaDao --> DatabaseConstants : uses
+PessoaDao --> DatabaseException : throws
+
+PessoaDto --> Pessoa : converts
+Pessoa --> ValidationException : throws
+
+DatabaseProvider --> AppDatabaseFactory : uses
+DatabaseFactoryProvider --> MobileDatabaseFactory : creates
+DatabaseFactoryProvider --> DesktopDatabaseFactory : creates  
+DatabaseFactoryProvider --> WebDatabaseFactory : creates
+
+PessoaStore --> PessoaRepository : uses
+PessoaStore --> Pessoa : manages
+PessoaStore --> Result : handles
+
+_PessoasPageState --> PessoaStore : observes
+PessoasApp --> PessoasPage : displays
+
+ServiceLocator --> AppDatabaseFactory : registers
+ServiceLocator --> DatabaseProvider : registers
+ServiceLocator --> PessoaDao : registers
+ServiceLocator --> PessoaRepository : registers
+ServiceLocator --> PessoaStore : registers
+
+@enduml
